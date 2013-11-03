@@ -44,7 +44,14 @@ getMyChannel :: ClientAuthorization -> IO TwitchChannel
 getMyChannel auth = C.makeCall auth (C.getMyChannel) >>= (extractResult . unpackJSON)
 
 -- getChannelVideos
--- getChannelFollows
+
+getChannelFollows :: ClientAuthorization -> String -> IO [TwitchUser]
+getChannelFollows auth channel = do
+    resp <- C.makeCall auth (C.getChannelFollows channel)
+    extractResult $ do
+        obj <- unpackJSON resp
+        follows <- obj .! "follows"
+        mapM (.! "user") follows
 
 getChannelEditors :: ClientAuthorization -> String -> IO [TwitchUser]
 getChannelEditors auth channel = C.makeCall auth (C.getChannelEditors channel) >>= (extractResult . (unpackJSON >=> (.! "users")))
@@ -74,22 +81,94 @@ runCommercial auth channel length = do
 
 -- Chat
 
+-- getChat
+-- getEmoticons -- TODO: Build a datatype for this
+
 -- Follows
 
+getUserFollows :: ClientAuthorization -> String -> IO [TwitchChannel]
+getUserFollows auth channel = do
+    resp <- C.makeCall auth (C.getUserFollows channel)
+    extractResult $ do
+        obj <- unpackJSON resp
+        follows <- obj .! "follows"
+        mapM (.! "channel") follows
+
+-- getFollowStatus -- TODO: Need to handle non-2xx gracefully
+
+putFollow :: ClientAuthorization -> String -> String -> IO TwitchChannel
+putFollow auth user channel = do
+    resp <- C.makeCall auth (C.putFollow user channel)
+    extractResult $ unpackJSON resp >>= (.! "channel")
+
+deleteFollow :: ClientAuthorization -> String -> String -> IO ()
+deleteFollow auth user channel = C.makeCall auth (C.deleteFollow user channel) >> return ()
+
 -- Games
+-- getGames
 
 -- Ingests
+-- getIngests
 
 -- Root
+-- getRoot
 
 -- Search
+-- searchStreams
+-- searchGames
 
 -- Streams
+getStream :: ClientAuthorization -> String -> IO (Maybe TwitchStream)
+getStream auth channel = do
+    resp <- C.makeCall auth (C.getStream channel)
+    extractResult $ do
+        obj <- unpackJSON resp
+        maybeResult $ valFromObj "stream" obj
+
+getStreams :: ClientAuthorization -> IO [TwitchStream]
+getStreams auth = do
+    resp <- C.makeCall auth (C.getStreams)
+    extractResult $ unpackJSON resp >>= (.! "streams")
+
+getFeaturedStreams :: ClientAuthorization -> IO [TwitchStream]
+getFeaturedStreams auth = do
+    resp <- C.makeCall auth (C.getFeaturedStreams)
+    extractResult $ do
+        obj <- unpackJSON resp
+        featured <- obj .! "featured"
+        mapM (.! "stream") featured
+
+-- getStreamsSummary
+
+getFollowedStreams :: ClientAuthorization -> IO [TwitchStream]
+getFollowedStreams auth = do
+    resp <- C.makeCall auth (C.getFollowedStreams)
+    extractResult $ unpackJSON resp >>= (.! "streams")
 
 -- Subscriptions
+getSubscribers :: ClientAuthorization -> String -> IO [TwitchUser]
+getSubscribers auth channel = do
+    resp <- C.makeCall auth (C.getSubscribers channel)
+    extractResult $ do
+        obj <- unpackJSON resp
+        featured <- obj .! "subscriptions"
+        mapM (.! "user") featured
+
+-- getSubscriberStatus
 
 -- Teams
+-- TODO (don't have team datatype)
 
 -- Users
+getUser :: ClientAuthorization -> String -> IO TwitchUser
+getUser auth user = do
+    resp <- C.makeCall auth (C.getUser user)
+    extractResult $ unpackJSON resp
+
+getMyUser :: ClientAuthorization -> IO TwitchUser
+getMyUser auth = do
+    resp <- C.makeCall auth C.getMyUser
+    extractResult $ unpackJSON resp
 
 -- Videos
+-- TODO (don't have video datatype)

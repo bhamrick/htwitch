@@ -23,7 +23,7 @@ data TwitchUser = TwitchUser
   , user_is_staff :: Bool
   , user_name :: String
   , user_id :: Int
-  , user_logo :: String
+  , user_logo :: Maybe String
   , user_created_at :: String -- TODO: datetime?
   } deriving (Eq, Show)
 
@@ -59,10 +59,10 @@ instance JSON TwitchUser where
   readJSON (JSObject o) = do
     updated_at      <- valFromObj "updated_at" o
     display_name    <- valFromObj "display_name" o
-    is_staff        <- valFromObj "staff" o
+    is_staff        <- boolResult $ valFromObj "staff" o
     name            <- valFromObj "name" o
     _id             <- valFromObj "_id" o
-    logo            <- valFromObj "logo" o
+    logo            <- maybeResult $ valFromObj "logo" o
     created_at      <- valFromObj "created_at" o
     return TwitchUser
       { user_updated_at     = updated_at
