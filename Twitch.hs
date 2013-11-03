@@ -1,5 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Twitch where
+module Twitch
+  ( getBlocks
+  , getChannel
+  , ClientAuthorization(..)
+  ) where
 
 import Control.Monad
 
