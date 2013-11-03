@@ -17,16 +17,6 @@ boolResult :: Result Bool -> Result Bool
 boolResult (Ok x) = Ok x
 boolResult (Error e) = Ok False
 
-data TwitchBlock = TwitchBlock
-  { block_updated_at :: String -- TODO: datetime?
-  , block_display_name :: String
-  , block_is_staff :: Bool
-  , block_name :: String
-  , block_id :: Int
-  , block_logo :: String
-  , block_created_at :: String -- TODO: datetime?
-  } deriving (Eq, Show)
-
 data TwitchUser = TwitchUser
   { user_updated_at :: String -- TODO: datetime?
   , user_display_name :: String
@@ -65,37 +55,6 @@ data TwitchStream = TwitchStream
   , stream_game :: String
   } deriving (Eq, Show)
 
-instance JSON TwitchBlock where
-  readJSON (JSObject o) = do
-    updated_at      <- valFromObj "updated_at" o
-    display_name    <- valFromObj "display_name" o
-    is_staff        <- valFromObj "staff" o
-    name            <- valFromObj "name" o
-    _id             <- valFromObj "_id" o
-    logo            <- valFromObj "logo" o
-    created_at      <- valFromObj "created_at" o
-    return TwitchBlock
-      { block_updated_at     = updated_at
-      , block_display_name   = display_name
-      , block_is_staff       = is_staff
-      , block_name           = name
-      , block_id             = _id
-      , block_logo           = logo
-      , block_created_at     = created_at
-      }
-  readJSON _ = Error "Could not parse block object"
-
-  showJSON block = JSObject . toJSObject $
-    [ ("updated_at",    showJSON . block_updated_at $ block)
-    , ("display_name",  showJSON . block_display_name  $ block)
-    , ("staff",         showJSON . block_is_staff $ block)
-    , ("name",          showJSON . block_name $ block)
-    , ("_id",           showJSON . block_id $ block)
-    , ("logo",          showJSON . block_logo $ block)
-    , ("created_at",    showJSON . block_created_at $ block)
-    ]
-
--- TODO: Update this with all fields
 instance JSON TwitchUser where
   readJSON (JSObject o) = do
     updated_at      <- valFromObj "updated_at" o

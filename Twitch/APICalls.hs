@@ -4,8 +4,9 @@ module Twitch.APICalls where
 import qualified Network.HTTP.Base as B
 import qualified Network.HTTP.Conduit as C
 import qualified Network.HTTP.Types as W
-import Data.ByteString.Char8
-import Data.CaseInsensitive
+import Data.List (intercalate)
+import Data.ByteString.Char8 hiding (intercalate, map)
+import Data.CaseInsensitive hiding (map)
 
 import Twitch.Datatypes
 
@@ -14,13 +15,13 @@ data APICall = APICall
   , params :: [(String, String)]
   , method :: W.Method
   , headers :: [(String, String)]
-  }
-
-instance Show APICall where
-  show c = (unpack $ method c) ++ " " ++ (path c)
+  } deriving (Eq, Show)
 
 prepHeader :: (String, String) -> W.Header
 prepHeader (h, v) = (mk $ pack h, pack v)
+
+addParam :: (String, String) -> APICall -> APICall
+addParam p c = c { params = p : (params c) }
 
 -- makeCall :: ClientAuthorization -> APICall -> IO (Data.ByteString.Lazy.Internal.ByteString)
 makeCall auth call = do
@@ -28,11 +29,12 @@ makeCall auth call = do
     let body = B.urlEncodeVars (params call)
     let hdrs' = ("Client-ID", client_id auth) :
                 ("Accept", "application/vnd.twitchtv.v2+json") :
+                ("Content-Type", "application/x-www-form-urlencoded") :
                 (headers call)
     let hdrs = case access_token auth of
                Nothing    -> hdrs'
                Just token -> ("Authorization", "OAuth " ++ token) : hdrs'
-    initReq <- C.parseUrl $ "https://api.twitch.tv/kraken" ++ (path call)
+    initReq <- C.parseUrl $ url
     let req = initReq { C.method = method call
                       , C.requestHeaders = Prelude.map prepHeader hdrs
                       , C.requestBody = C.RequestBodyBS (pack body)

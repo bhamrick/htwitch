@@ -22,6 +22,7 @@ library
   build-depends:       base ==4.6.*
                      , bytestring ==0.10.*
                      , case-insensitive ==1.0.*
+                     , containers ==0.5.*
                      , HTTP ==4000.2.*
                      , http-conduit ==1.9.*
                      , http-types ==0.8.*
