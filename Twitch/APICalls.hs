@@ -37,7 +37,8 @@ makeCall auth call = do
                       , C.requestHeaders = Prelude.map prepHeader hdrs
                       , C.requestBody = C.RequestBodyBS (pack body)
                       }
-    C.withManager $ C.httpLbs req
+    response <- C.withManager $ C.httpLbs req
+    return $ C.responseBody response
 
 baseAPICall = APICall
   { path = ""

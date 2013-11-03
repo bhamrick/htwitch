@@ -7,7 +7,15 @@ import Text.JSON
 data ClientAuthorization = CA
   { client_id :: String
   , access_token :: Maybe String
-  }
+  } deriving (Eq, Show)
+
+maybeResult :: Result a -> Result (Maybe a)
+maybeResult (Ok r) = Ok (Just r)
+maybeResult (Error e) = Ok Nothing
+
+boolResult :: Result Bool -> Result Bool
+boolResult (Ok x) = Ok x
+boolResult (Error e) = Ok False
 
 data TwitchBlock = TwitchBlock
   { block_updated_at :: String -- TODO: datetime?
@@ -35,11 +43,11 @@ data TwitchChannel = TwitchChannel
   , channel_stream_key :: Maybe String
   , channel_created_at :: String
   -- , channel_teams :: [TwitchTeam]
-  , channel_title :: String
+  , channel_status:: String
   , channel_updated_at :: String
-  , channel_banner :: String
-  , channel_video_banner :: String
-  , channel_background :: String
+  , channel_banner :: Maybe String
+  , channel_video_banner :: Maybe String
+  , channel_background :: Maybe String
   , channel_logo :: String
   , channel_id :: Int
   , channel_is_mature :: Bool
@@ -122,16 +130,16 @@ instance JSON TwitchChannel where
   readJSON (JSObject o) = do
     game         <- valFromObj "game" o
     name         <- valFromObj "name" o
-    stream_key   <- valFromObj "stream_key" o
+    stream_key   <- maybeResult $ valFromObj "stream_key" o
     created_at   <- valFromObj "created_at" o
-    title        <- valFromObj "title" o
+    status       <- valFromObj "status" o
     updated_at   <- valFromObj "updated_at" o
-    banner       <- valFromObj "banner" o
-    video_banner <- valFromObj "video_banner" o
-    background   <- valFromObj "background" o
+    banner       <- maybeResult $ valFromObj "banner" o
+    video_banner <- maybeResult $ valFromObj "video_banner" o
+    background   <- maybeResult $ valFromObj "background" o
     logo         <- valFromObj "logo" o
     _id          <- valFromObj "_id" o
-    mature       <- valFromObj "mature" o
+    mature       <- boolResult $ valFromObj "mature" o
     url          <- valFromObj "url" o
     display_name <- valFromObj "display_name" o
     return TwitchChannel
@@ -139,7 +147,7 @@ instance JSON TwitchChannel where
       , channel_name = name
       , channel_stream_key = stream_key
       , channel_created_at = created_at
-      , channel_title = title
+      , channel_status = status
       , channel_updated_at = updated_at
       , channel_banner = banner
       , channel_video_banner = video_banner
@@ -157,7 +165,7 @@ instance JSON TwitchChannel where
     , ("name",         showJSON . channel_name $ channel)
     , ("stream_key",   showJSON . channel_stream_key $ channel)
     , ("created_at",   showJSON . channel_created_at $ channel)
-    , ("title",        showJSON . channel_title $ channel)
+    , ("status",       showJSON . channel_status $ channel)
     , ("updated_at",   showJSON . channel_updated_at $ channel)
     , ("banner",       showJSON . channel_banner $ channel)
     , ("video_banner", showJSON . channel_video_banner $ channel)
