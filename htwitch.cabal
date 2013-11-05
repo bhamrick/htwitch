@@ -16,9 +16,9 @@ cabal-version:       >=1.8
 
 library
   exposed-modules:     Twitch
-                     , Twitch.APICalls
+                     , Twitch.APIRequests
                      , Twitch.Datatypes
-  -- other-modules:       
+  other-modules:       Twitch.Util
   build-depends:       base ==4.6.*
                      , bytestring ==0.10.*
                      , case-insensitive ==1.0.*

@@ -3,81 +3,95 @@ module Twitch where
 
 import Control.Monad
 
-import qualified Twitch.APICalls as C
+import qualified Network.HTTP.Conduit as C
+
+import qualified Twitch.APIRequests as R
 import Twitch.Datatypes
+import Twitch.Util
 
 import Text.JSON
 
 import Data.ByteString.Lazy.Char8 (unpack)
 import Data.ByteString.Lazy.Internal (ByteString)
+import qualified Data.ByteString.Lazy.Internal as LBS
 
-unpackJSON :: JSON a => Data.ByteString.Lazy.Internal.ByteString -> Result a
-unpackJSON = decode . unpack
+data APICall r = APICall
+  { request :: R.APIRequest
+  , parser :: C.Response LBS.ByteString -> Result r
+  }
 
--- helper function to extract a key from a dictionary
-(.!) :: (JSON a) => JSValue -> String -> Result a
-(JSObject o) .! k = valFromObj k o
-_ .! _ = Error $ "Cannot extract from a non-JSObject JSValue"
-
--- This is probably not good style
-extractResult :: Monad m => Result a -> m a
-extractResult (Ok x) = return x
-extractResult (Error s) = fail s
-
--- TODO: Return error codes
+makeCall auth call = R.makeRequest_ auth (request call) >>= (extractResult . (parser call))
 
 -- Blocks
 getBlocks :: ClientAuthorization -> String -> IO [TwitchUser] -- This can be in a more general monad
-getBlocks auth login = C.makeCall auth (C.getBlocks login) >>= (extractResult . (unpackJSON >=> (.! "blocks")))
+getBlocks auth login = R.makeRequest auth (R.getBlocks login) >>= (extractResult . (unpackJSON >=> (.! "blocks")))
 
 putBlock :: ClientAuthorization -> String -> String -> IO TwitchUser
-putBlock auth user target = C.makeCall auth (C.putBlock user target) >>= (extractResult . (unpackJSON >=> (.! "user")))
+putBlock auth user target = R.makeRequest auth (R.putBlock user target) >>= (extractResult . (unpackJSON >=> (.! "user")))
 
 deleteBlock :: ClientAuthorization -> String -> String -> IO ()
-deleteBlock auth user target = C.makeCall auth (C.deleteBlock user target) >> return ()
+deleteBlock auth user target = R.makeRequest auth (R.deleteBlock user target) >> return ()
 
 -- Channels
-getChannel :: ClientAuthorization -> String -> IO TwitchChannel
-getChannel auth name = C.makeCall auth (C.getChannel name) >>= (extractResult . unpackJSON)
+getChannel :: String -> APICall TwitchChannel
+getChannel name = APICall
+  { request = R.getChannel name
+  , parser = unpackJSON . C.responseBody
+  }
 
-getMyChannel :: ClientAuthorization -> IO TwitchChannel
-getMyChannel auth = C.makeCall auth (C.getMyChannel) >>= (extractResult . unpackJSON)
+getMyChannel :: APICall TwitchChannel
+getMyChannel = APICall
+  { request = R.getMyChannel
+  , parser = unpackJSON . C.responseBody
+  }
 
 -- getChannelVideos
 
-getChannelFollows :: ClientAuthorization -> String -> IO [TwitchUser]
-getChannelFollows auth channel = do
-    resp <- C.makeCall auth (C.getChannelFollows channel)
-    extractResult $ do
-        obj <- unpackJSON resp
-        follows <- obj .! "follows"
-        mapM (.! "user") follows
+getChannelFollows :: String -> APICall [TwitchUser]
+getChannelFollows channel = APICall
+  { request = R.getChannelFollows channel
+  , parser = (unpackJSON >=> (.! "follows") >=> mapM (.! "user")) . C.responseBody
+  }
 
-getChannelEditors :: ClientAuthorization -> String -> IO [TwitchUser]
-getChannelEditors auth channel = C.makeCall auth (C.getChannelEditors channel) >>= (extractResult . (unpackJSON >=> (.! "users")))
+getChannelEditors :: String -> APICall [TwitchUser]
+getChannelEditors channel = APICall
+  { request = R.getChannelEditors channel
+  , parser = (unpackJSON >=> (.! "users")) . C.responseBody
+  }
 
--- Mediocre interface for updating stream status/game
-putChannelStatus :: ClientAuthorization -> String -> String -> IO TwitchChannel
-putChannelStatus auth channel status = do
-    let req = C.addParam ("channel[status]", status) (C.putChannel channel)
-    resp <- C.makeCall auth req
-    extractResult . unpackJSON $ resp
+-- Slightly better interface for updating stream status/game
+putChannel :: String -> APICall TwitchChannel
+putChannel channel = APICall
+  { request = R.putChannel channel
+  , parser = unpackJSON . C.responseBody
+  }
 
-putChannelGame :: ClientAuthorization -> String -> String -> IO TwitchChannel
-putChannelGame auth channel game = do
-    let req = C.addParam ("channel[game]", game) (C.putChannel channel)
-    C.makeCall auth req >>= (extractResult . unpackJSON)
+-- Convenience methods
+putChannelStatus :: String -> String -> APICall TwitchChannel
+putChannelStatus channel status = APICall
+  { request = R.addParam ("channel[status]", status) (R.putChannel channel)
+  , parser = unpackJSON . C.responseBody
+  }
 
-deleteStreamKey :: ClientAuthorization -> String -> IO ()
-deleteStreamKey auth channel = do
-    C.makeCall auth (C.deleteStreamKey channel)
-    return ()
+putChannelGame :: String -> String -> APICall TwitchChannel
+putChannelGame channel game = APICall
+  { request = R.addParam ("channel[game]", game) (R.putChannel channel)
+  , parser = unpackJSON . C.responseBody
+  }
 
-runCommercial :: ClientAuthorization -> String -> Int -> IO ()
-runCommercial auth channel length = do
-    let req = C.addParam ("length", show length) (C.runCommercial channel)
-    C.makeCall auth req
-    return ()
+-- TODO: return success
+deleteStreamKey :: String -> APICall ()
+deleteStreamKey channel = APICall
+  { request = R.deleteStreamKey channel
+  , parser = const $ return ()
+  }
+
+-- TODO: return success
+runCommercial :: String -> Int -> APICall ()
+runCommercial channel length = APICall
+  { request = R.addParam ("length", show length) (R.runCommercial channel)
+  , parser = const $ return ()
+  }
 
 -- Chat
 
@@ -86,23 +100,25 @@ runCommercial auth channel length = do
 
 -- Follows
 
-getUserFollows :: ClientAuthorization -> String -> IO [TwitchChannel]
-getUserFollows auth channel = do
-    resp <- C.makeCall auth (C.getUserFollows channel)
-    extractResult $ do
-        obj <- unpackJSON resp
-        follows <- obj .! "follows"
-        mapM (.! "channel") follows
+getUserFollows :: String -> APICall [TwitchChannel]
+getUserFollows user = APICall
+  { request = R.getUserFollows user
+  , parser = (unpackJSON >=> (.! "follows") >=> mapM (.! "channel")) . C.responseBody
+  }
 
 -- getFollowStatus -- TODO: Need to handle non-2xx gracefully
 
-putFollow :: ClientAuthorization -> String -> String -> IO TwitchChannel
-putFollow auth user channel = do
-    resp <- C.makeCall auth (C.putFollow user channel)
-    extractResult $ unpackJSON resp >>= (.! "channel")
+putFollow :: String -> String -> APICall TwitchChannel
+putFollow user channel = APICall
+  { request = R.putFollow user channel
+  , parser = (unpackJSON >=> (.! "channel")) . C.responseBody
+  }
 
-deleteFollow :: ClientAuthorization -> String -> String -> IO ()
-deleteFollow auth user channel = C.makeCall auth (C.deleteFollow user channel) >> return ()
+deleteFollow :: String -> String -> APICall ()
+deleteFollow user channel = APICall
+  { request = R.deleteFollow user channel
+  , parser = const $ return ()
+  }
 
 -- Games
 -- getGames
@@ -118,41 +134,38 @@ deleteFollow auth user channel = C.makeCall auth (C.deleteFollow user channel) >
 -- searchGames
 
 -- Streams
-getStream :: ClientAuthorization -> String -> IO (Maybe TwitchStream)
-getStream auth channel = do
-    resp <- C.makeCall auth (C.getStream channel)
-    extractResult $ do
-        obj <- unpackJSON resp
-        maybeResult $ valFromObj "stream" obj
+getStream :: String -> APICall (Maybe TwitchStream)
+getStream channel = APICall
+  { request = R.getStream channel
+  , parser = (unpackJSON >=> (maybeResult . (.! "stream"))) . C.responseBody
+  }
 
-getStreams :: ClientAuthorization -> IO [TwitchStream]
-getStreams auth = do
-    resp <- C.makeCall auth (C.getStreams)
-    extractResult $ unpackJSON resp >>= (.! "streams")
+getStreams :: APICall [TwitchStream]
+getStreams = APICall
+  { request = R.getStreams
+  , parser = (unpackJSON >=> (.! "streams")) . C.responseBody
+  }
 
-getFeaturedStreams :: ClientAuthorization -> IO [TwitchStream]
-getFeaturedStreams auth = do
-    resp <- C.makeCall auth (C.getFeaturedStreams)
-    extractResult $ do
-        obj <- unpackJSON resp
-        featured <- obj .! "featured"
-        mapM (.! "stream") featured
+getFeaturedStreams :: APICall [TwitchStream]
+getFeaturedStreams = APICall
+  { request = R.getFeaturedStreams
+  , parser = (unpackJSON >=> (.! "featured") >=> mapM (.! "stream")) . C.responseBody
+  }
 
 -- getStreamsSummary
 
-getFollowedStreams :: ClientAuthorization -> IO [TwitchStream]
-getFollowedStreams auth = do
-    resp <- C.makeCall auth (C.getFollowedStreams)
-    extractResult $ unpackJSON resp >>= (.! "streams")
+getFollowedStreams :: APICall [TwitchStream]
+getFollowedStreams = APICall
+  { request = R.getFollowedStreams
+  , parser = (unpackJSON >=> (.! "streams")) . C.responseBody
+  }
 
 -- Subscriptions
-getSubscribers :: ClientAuthorization -> String -> IO [TwitchUser]
-getSubscribers auth channel = do
-    resp <- C.makeCall auth (C.getSubscribers channel)
-    extractResult $ do
-        obj <- unpackJSON resp
-        featured <- obj .! "subscriptions"
-        mapM (.! "user") featured
+getSubscribers :: String -> APICall [TwitchUser]
+getSubscribers channel = APICall
+  { request = R.getSubscribers channel
+  , parser = (unpackJSON >=> (.! "subscriptions") >=> mapM (.! "user")) . C.responseBody
+  }
 
 -- getSubscriberStatus
 
@@ -160,15 +173,17 @@ getSubscribers auth channel = do
 -- TODO (don't have team datatype)
 
 -- Users
-getUser :: ClientAuthorization -> String -> IO TwitchUser
-getUser auth user = do
-    resp <- C.makeCall auth (C.getUser user)
-    extractResult $ unpackJSON resp
+getUser :: String -> APICall TwitchUser
+getUser user = APICall
+  { request = R.getUser user
+  , parser = unpackJSON . C.responseBody
+  }
 
-getMyUser :: ClientAuthorization -> IO TwitchUser
-getMyUser auth = do
-    resp <- C.makeCall auth C.getMyUser
-    extractResult $ unpackJSON resp
+getMyUser :: APICall TwitchUser
+getMyUser = APICall
+  { request = R.getMyUser
+  , parser = unpackJSON . C.responseBody
+  }
 
 -- Videos
 -- TODO (don't have video datatype)
